@@ -15,16 +15,30 @@ This is a Kubernetes [mutating admission webhook][mutating-admission-webhook] wh
 
 ## Usage
 
-Create the admission webhook:
+Install the admission webhook — this creates a self-signed TLS certificate, then creates the required resources from `k8s/`:
 
-```
-kubectl apply -f k8s
+```console
+$ make install
+openssl genrsa -out tls.key 4096
+openssl req -x509 -key tls.key -sha256 -days 3650 -out tls.crt \
+            -subj "/CN=host-gateway-admission-webhook.default.svc" \
+            -addext "subjectAltName=DNS:host-gateway-admission-webhook.default.svc,DNS:host-gateway-admission-webhook.default,DNS:host-gateway-admission-webhook"
+CA_BUNDLE="`cat tls.crt | base64 | tr -d '\n'`" envsubst < k8s/mutatingwebhook.yaml.tpl > k8s/mutatingwebhook.yaml
+kubectl create secret tls host-gateway-admission-webhook --key tls.key --cert tls.crt
+secret/host-gateway-admission-webhook created
+kubectl create -f k8s
+deployment.apps/host-gateway-admission-webhook created
+mutatingwebhookconfiguration.admissionregistration.k8s.io/host-gateway-admission-webhook created
+serviceaccount/host-gateway-admission-webhook created
+clusterrole.rbac.authorization.k8s.io/host-gateway-admission-webhook created
+clusterrolebinding.rbac.authorization.k8s.io/host-gateway-admission-webhook created
+service/host-gateway-admission-webhook created
 ```
 
-Then use it from a pod like so:
+Then use it from a pod:
 
-```
-cat <<EOF | kubectl create -f -
+```console
+$ cat <<EOF | kubectl create -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -42,8 +56,8 @@ EOF
 
 Confirm it worked:
 
-```
-kubectl exec -it pod/shell-demo -- ping -c 1 example.com
+```console
+$ kubectl exec -it pod/shell-demo -- ping -c 1 example.com
 PING example.com (0.250.250.254): 56 data bytes
 64 bytes from 0.250.250.254: seq=0 ttl=62 time=0.250 ms
 
@@ -54,17 +68,31 @@ round-trip min/avg/max = 0.250/0.250/0.250 ms
 
 You can also monitor the logs to confirm it's working:
 
-```
-kubectl logs -f deployment/host-gateway-admission-webhook
+```console
+$ kubectl logs -f deployment/host-gateway-admission-webhook
 2025/06/11 02:35:49 [default] Pod/shell-demo: replacing `host-gateway` with `0.250.250.254`
 ```
 
 If it fails, `kubectl create ...` should fail with a useful error message.
 
+Uninstall with:
+
+```console
+$ make uninstall
+kubectl delete -f k8s;  kubectl delete secret host-gateway-admission-webhook
+deployment.apps "host-gateway-admission-webhook" deleted
+mutatingwebhookconfiguration.admissionregistration.k8s.io "host-gateway-admission-webhook" deleted
+serviceaccount "host-gateway-admission-webhook" deleted
+clusterrole.rbac.authorization.k8s.io "host-gateway-admission-webhook" deleted
+clusterrolebinding.rbac.authorization.k8s.io "host-gateway-admission-webhook" deleted
+service "host-gateway-admission-webhook" deleted
+secret "host-gateway-admission-webhook" deleted
+```
+
 ## Caveats
 
-- TLS is required for admissions webhooks. An example key and cert is supplied for ease of use. This is a terrible idea. But it's fine for experimental purposes. You can regenerate these with `rm tls.* && make tls.crt`, then change the resources within the `k8s` directory. (This could be automated.)
 - `host-gateway` is resolved by the webhook service, so will use the IP it sees for `host.docker.internal`. This is fine for [Kubernetes running in Docker Desktop][docker-desktop-kubernetes], or alternatives like [OrbStack][orbstack-kubernetes]. But it will break on multi-node clusters, or when `host.docker.internal` is not available.
+- `host-gateway` is only resolved once, at pod creation time.
 
   [docker-desktop-kubernetes]: https://docs.docker.com/desktop/kubernetes/
   [orbstack-kubernetes]: https://docs.orbstack.dev/kubernetes/

@@ -1,2 +1,3 @@
 /tls.key
 /tls.crt
+/k8s/mutatingwebhook.yaml
