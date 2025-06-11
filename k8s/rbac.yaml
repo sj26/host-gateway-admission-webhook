@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: host-gateway-admission-webhook
+  labels:
+    app: host-gateway-admission-webhook
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: host-gateway-admission-webhook
+  labels:
+    app: host-gateway-admission-webhook
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - events
+    verbs:
+      - "*"
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: host-gateway-admission-webhook
+  labels:
+    app: host-gateway-admission-webhook
+subjects:
+  - kind: ServiceAccount
+    name: host-gateway-admission-webhook
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: host-gateway-admission-webhook
